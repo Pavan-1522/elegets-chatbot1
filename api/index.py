@@ -59,6 +59,7 @@ def chat():
         - **Company Name:** Elegets Electronics
         - **Founders:** Pavan Kumar Madeti and K. Vikas
         - **CEO:** Pavan Kumar Madeti
+        - **COO:** Chakka Vasanth
         - **Location:** Srikakulam, Andhra Pradesh, India. (We operate primarily online).
     
         ### Our Journey
