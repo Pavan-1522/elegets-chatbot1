@@ -2,21 +2,26 @@ import os
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-from flask_cors import CORS # 1. IMPORT CORS LIBRARY
+from flask_cors import CORS 
 
-# Load environment variables (for Vercel, this reads from the dashboard settings)
+# Load environment variables
 load_dotenv()
 
 # Initialize the Flask application
 app = Flask(__name__)
-# 2. ENABLE CORS TO ALLOW REQUESTS FROM YOUR WEBSITE
-CORS(app) 
+
+# --- THIS IS THE UPDATED SECTION ---
+# This explicitly lists which websites (origins) are allowed to access your backend.
+CORS(app, origins=[
+    "https://elegets.in",      # Your official production website
+    "http://127.0.0.1:5500",  # Your local computer for testing
+    "http://localhost:5500"    # Also your local computer, a good fallback
+])
+# -----------------------------------
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# 3. This is now the main endpoint for your Vercel function
-# It will be accessible at https://your-site.vercel.app/api
 @app.route('/', methods=['POST'])
 def chat():
     user_message = request.json.get('message')
@@ -27,7 +32,7 @@ def chat():
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {API_KEY}",
-        "HTTP-Referer": "https://elegets.in", # Updated for production
+        "HTTP-Referer": "https://elegets.in",
         "X-Title": "Elegets Chatbot"
     }
 
@@ -99,5 +104,3 @@ def chat():
     except requests.exceptions.RequestException as e:
         print(f"Error calling OpenRouter API: {e}")
         return jsonify({"error": "Failed to get response from AI"}), 500
-
-# NOTE: The if __name__ == '__main__' block is not needed for Vercel and is removed.
