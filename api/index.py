@@ -111,7 +111,7 @@ Always prioritize your Primary Role. Do not promote Elegets Electronics or menti
         print(f"Sending {len(final_messages)} messages to OpenRouter...")
 
         payload = {
-            "model": "deepseek/deepseek-chat", 
+            "model": "deepseek/deepseek-r1-0528-qwen3-8b:free", 
             "messages": final_messages
         }
 
