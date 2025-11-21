@@ -7,35 +7,36 @@ from flask_cors import CORS
 # Load environment variables
 load_dotenv()
 
-# Initialize the Flask application
+# Initialize Flask
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://elegets.in",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500"
-])
 
-@app.route('/', methods=['POST'])
+# --- CORS FIX ---
+# This allows ALL origins ("*"). It is the safest way to fix local testing errors.
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+@app.route('/', methods=['POST', 'OPTIONS']) # Allow OPTIONS for preflight
 def chat():
-    # START OF DEBUGGING
-    print("--- CHAT FUNCTION TRIGGERED ---")
+    # Handle the Preflight Request (Browser checking if it's okay to connect)
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
     try:
-        # 1. Check if the API Key was loaded successfully
+        # 1. Check API Key
         API_KEY = os.getenv("OPENROUTER_API_KEY")
         if not API_KEY:
-            print("!!! FATAL ERROR: OPENROUTER_API_KEY environment variable was not found or is empty!")
-            return jsonify({"error": "Server configuration error: API key is missing."}), 500
-        print("API Key loaded successfully.")
+            return jsonify({"error": "Server Error: API Key missing"}), 500
 
         API_URL = "https://openrouter.ai/api/v1/chat/completions"
         
-        # 2. Check if the user message was received
-        user_message = request.json.get('message')
-        if not user_message:
-            print("Error: No 'message' found in the incoming request.")
-            return jsonify({"error": "No message provided"}), 400
-        print(f"Received message: '{user_message}'")
+        # 2. Get Data
+        data = request.json
+        user_message = data.get('message')
+        history = data.get('history', [])
 
+        if not user_message and not history:
+            return jsonify({"error": "No message provided"}), 400
+
+        # 3. Prepare Headers
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {API_KEY}",
@@ -43,7 +44,8 @@ def chat():
             "X-Title": "Elegets Chatbot"
         }
 
-        system_prompt_content = """
+        # 4. Clean History & Prepare Prompt
+        system_prompt = """
         You operate under two distinct roles with a clear hierarchy.
 
         ## PRIMARY ROLE: Expert Technical Assistant
@@ -93,30 +95,31 @@ def chat():
         Always prioritize your Primary Role. Do not promote Elegets Electronics or mention its services unless the user asks you about the company first or asks who you are.
         """
         
-        payload = {
-            "model": "deepseek/deepseek-chat-v3.1",
-            "messages": [
-                {"role": "system", "content": system_prompt_content.strip()},
-                {"role": "user", "content": user_message}
-            ]
-        }
-        print("Payload constructed. Making request to OpenRouter...")
-
-        # 3. Make the API call and check for errors
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status() # This will raise an error for bad status codes (like 4xx or 5xx)
+        # Filter out old system messages to avoid duplication
+        conversation_messages = [msg for msg in history if msg.get('role') != 'system']
         
-        print(f"Request to OpenRouter successful. Status: {response.status_code}")
+        if not conversation_messages and user_message:
+             conversation_messages.append({"role": "user", "content": user_message})
+
+        final_messages = [{"role": "system", "content": system_prompt}] + conversation_messages
+
+        payload = {
+            "model": "deepseek/deepseek-chat", 
+            "messages": final_messages
+        }
+
+        # 5. Send to AI
+        response = requests.post(API_URL, headers=headers, json=payload)
+        response.raise_for_status()
         
         bot_response = response.json()['choices'][0]['message']['content']
-        print("--- CHAT FUNCTION COMPLETED SUCCESSFULLY ---")
+        
         return jsonify({"reply": bot_response})
 
-    # 4. Catch specific errors and print detailed information
-    except requests.exceptions.HTTPError as http_err:
-        print(f"!!! HTTP ERROR from OpenRouter: {http_err}")
-        print(f"!!! Response Body: {http_err.response.text}") # This shows the exact error from OpenRouter
-        return jsonify({"error": "An error occurred with the AI service."}), 500
     except Exception as e:
-        print(f"!!! AN UNEXPECTED ERROR OCCURRED: {e}")
-        return jsonify({"error": "An internal server error occurred."}), 500
+        print(f"Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# Needed for local testing, Vercel ignores this
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
