@@ -9,31 +9,32 @@ load_dotenv()
 
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app, origins=["*"]) # Allow all origins for testing, or list specific URLs
+CORS(app, origins=[
+    "https://elegets.in",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500"
+])
 
 @app.route('/', methods=['POST'])
 def chat():
     # START OF DEBUGGING
     print("--- CHAT FUNCTION TRIGGERED ---")
     try:
-        # 1. Check API Key
+        # 1. Check if the API Key was loaded successfully
         API_KEY = os.getenv("OPENROUTER_API_KEY")
         if not API_KEY:
-            print("!!! FATAL ERROR: API Key missing")
+            print("!!! FATAL ERROR: OPENROUTER_API_KEY environment variable was not found or is empty!")
             return jsonify({"error": "Server configuration error: API key is missing."}), 500
+        print("API Key loaded successfully.")
 
         API_URL = "https://openrouter.ai/api/v1/chat/completions"
         
-        # 2. Get Data from Frontend
-        data = request.json
-        user_message = data.get('message')
-        history = data.get('history', []) # <--- THIS IS NEW: Get the history list
-
-        if not user_message and not history:
+        # 2. Check if the user message was received
+        user_message = request.json.get('message')
+        if not user_message:
+            print("Error: No 'message' found in the incoming request.")
             return jsonify({"error": "No message provided"}), 400
-        
         print(f"Received message: '{user_message}'")
-        print(f"History length: {len(history)}")
 
         headers = {
             "Content-Type": "application/json",
@@ -42,7 +43,6 @@ def chat():
             "X-Title": "Elegets Chatbot"
         }
 
-        # --- SYSTEM PROMPT ---
         system_prompt_content = """
         You operate under two distinct roles with a clear hierarchy.
 
@@ -92,43 +92,31 @@ def chat():
         --- FINAL INSTRUCTION ---
         Always prioritize your Primary Role. Do not promote Elegets Electronics or mention its services unless the user asks you about the company first or asks who you are.
         """
-
-        # 3. CONSTRUCT CONTEXT (The Fix)
-        # We filter out any 'system' messages coming from the frontend so we don't duplicate them.
-        # We rely on the backend system prompt defined above.
-        conversation_messages = [msg for msg in history if msg.get('role') != 'system']
         
-        # If history was empty (first message), ensure we add the current user message
-        # (The frontend usually adds it to history, but this is a safety check)
-        if not conversation_messages and user_message:
-             conversation_messages.append({"role": "user", "content": user_message})
-
-        # Combine: [System Prompt] + [Conversation History]
-        final_messages = [{"role": "system", "content": system_prompt_content.strip()}] + conversation_messages
-
         payload = {
-            # Make sure this model name is correct for OpenRouter. 
-            # "deepseek/deepseek-chat" is the standard V3 ID.
-            "model": "deepseek/deepseek-chat", 
-            "messages": final_messages
+            "model": "deepseek/deepseek-chat-v3.1",
+            "messages": [
+                {"role": "system", "content": system_prompt_content.strip()},
+                {"role": "user", "content": user_message}
+            ]
         }
+        print("Payload constructed. Making request to OpenRouter...")
 
-        # 4. Make Request
+        # 3. Make the API call and check for errors
         response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status()
+        response.raise_for_status() # This will raise an error for bad status codes (like 4xx or 5xx)
+        
+        print(f"Request to OpenRouter successful. Status: {response.status_code}")
         
         bot_response = response.json()['choices'][0]['message']['content']
-        
-        print("--- SUCCESS ---")
+        print("--- CHAT FUNCTION COMPLETED SUCCESSFULLY ---")
         return jsonify({"reply": bot_response})
 
+    # 4. Catch specific errors and print detailed information
     except requests.exceptions.HTTPError as http_err:
-        print(f"!!! HTTP ERROR: {http_err}")
-        print(f"!!! Body: {http_err.response.text}")
-        return jsonify({"error": "AI Service Error"}), 500
+        print(f"!!! HTTP ERROR from OpenRouter: {http_err}")
+        print(f"!!! Response Body: {http_err.response.text}") # This shows the exact error from OpenRouter
+        return jsonify({"error": "An error occurred with the AI service."}), 500
     except Exception as e:
-        print(f"!!! UNEXPECTED ERROR: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+        print(f"!!! AN UNEXPECTED ERROR OCCURRED: {e}")
+        return jsonify({"error": "An internal server error occurred."}), 500
