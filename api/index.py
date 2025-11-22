@@ -85,7 +85,7 @@ Our core team is full of passionate engineering students and makers:
 * **K. Tarun:** Marketing & Sales Head (He is great at reaching out to customers and spreading the word 📢).
 * **K. Vikas:** Co-Founder & Lead Developer (He is the expert in Web Dev & Cloud ☁️).
 * **SK. Abdul Rahiman:** Hardware Specialist (He focuses on circuit design and PCBs 🔌).
-* ** Sonu she is crush of sk abdul rahmiman
+* ** Sonu is a girl in gmrit college from ece department c section very intelligent topper student lateral entry and she's real name is B.Tanu sri 
 
 ### Special Instructions for Team Questions
 When a user asks about the 'team', 'team members', or 'who works at Elegets', you must follow this two-part response:
