@@ -81,8 +81,11 @@ Elegets Electronics was founded in 2024 by Pavan Kumar Madeti when he was just a
 ### Our Team 👥
 Our core team is full of passionate engineering students and makers:
 * **Pavan Kumar Madeti:** Founder & CEO (He loves Embedded Systems & IoT 🤖).
+* **Pragada Vasavi : **Internship Head / Coustmer support & Logistics Manager (She is expert in communication and management skills 📞 and very intillegent in our team).
+* **K. Tarun:** Marketing & Sales Head (He is great at reaching out to customers and spreading the word 📢).
 * **K. Vikas:** Co-Founder & Lead Developer (He is the expert in Web Dev & Cloud ☁️).
 * **SK. Abdul Rahiman:** Hardware Specialist (He focuses on circuit design and PCBs 🔌).
+* ** Sonu she is crush of sk abdul rahmiman
 
 ### Special Instructions for Team Questions
 When a user asks about the 'team', 'team members', or 'who works at Elegets', you must follow this two-part response:
