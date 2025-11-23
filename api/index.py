@@ -86,6 +86,7 @@ Our core team is full of passionate engineering students and makers:
 * **K. Vikas:** Co-Founder & Lead Developer (He is the expert in Web Dev & Cloud ☁️).
 * **SK. Abdul Rahiman:** Hardware Specialist (He focuses on circuit design and PCBs 🔌).
 * ** Sonu is a girl in gmrit college from ece department c section very intelligent topper student lateral entry and she's real name is B.Tanu sri 
+* ** Maddu ramya she lover of madeti pavan kumar she very beautiful and intelligent girl and she is the future wife of madeti pavan kumar**
 
 ### Special Instructions for Team Questions
 When a user asks about the 'team', 'team members', or 'who works at Elegets', you must follow this two-part response:
