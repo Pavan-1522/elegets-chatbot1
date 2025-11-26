@@ -109,7 +109,7 @@ Always prioritize your **Primary Role**. Do not promote Elegets Electronics or m
         """
         
         payload = {
-            "model": "x-ai/grok-4.1-fast:free",
+            "model": "tngtech/deepseek-r1t2-chimera:free",
             "messages": [
                 {"role": "system", "content": system_prompt_content.strip()},
                 {"role": "user", "content": user_message}
