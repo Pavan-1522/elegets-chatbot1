@@ -9,41 +9,18 @@ load_dotenv()
 
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://elegets.in",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500"
-])
+CORS(app, origins=["*"]) # Allow all origins for testing (Change to specific domains later)
 
-@app.route('/', methods=['POST'])
-def chat():
-    # START OF DEBUGGING
-    print("--- CHAT FUNCTION TRIGGERED ---")
-    try:
-        # 1. Check if the API Key was loaded successfully
-        API_KEY = os.getenv("OPENROUTER_API_KEY")
-        if not API_KEY:
-            print("!!! FATAL ERROR: OPENROUTER_API_KEY environment variable was not found or is empty!")
-            return jsonify({"error": "Server configuration error: API key is missing."}), 500
-        print("API Key loaded successfully.")
+# --- CONFIGURATION ---
+# List models in order of preference. If the first fails, it tries the next.
+MODEL_LIST = [
+    "google/gemini-2.0-flash-exp:free",      # 1. Fast & Smart
+    "deepseek/deepseek-r1:free",             # 2. Good reasoning
+    "meta-llama/llama-3-8b-instruct:free",   # 3. Reliable backup
+    "microsoft/phi-3-mini-128k-instruct:free" # 4. Last resort
+]
 
-        API_URL = "https://openrouter.ai/api/v1/chat/completions"
-        
-        # 2. Check if the user message was received
-        user_message = request.json.get('message')
-        if not user_message:
-            print("Error: No 'message' found in the incoming request.")
-            return jsonify({"error": "No message provided"}), 400
-        print(f"Received message: '{user_message}'")
-
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
-            "HTTP-Referer": "https://elegets.in",
-            "X-Title": "Elegets Chatbot"
-        }
-
-        system_prompt_content = """
+system_prompt_content = """
         You operate under two distinct roles with a clear hierarchy, but you must ALWAYS maintain a specific personality.
 
 ## GLOBAL PERSONALITY & STYLE GUIDE 🌟
@@ -105,33 +82,79 @@ Our mission is to help the next generation of engineers build cool new projects!
 * **Mobile App:** You can find our official app on the Google Play Store! 📱
 
 --- FINAL INSTRUCTION ---
-Always prioritize your **Primary Role**. Do not promote Elegets Electronics or mention its services unless the user asks you about the company first or asks who you are. Keep it friendly and simple! 😊
-        """
+Always prioritize your **Primary Role**. Do not promote Elegets Electronics or mention its services unless the user asks you about the company first or asks who you are. Keep it friendly and simple! 😊"""
+
+@app.route('/', methods=['POST'])
+def chat():
+    print("--- CHAT FUNCTION TRIGGERED ---")
+    
+    # 1. Check API Key
+    API_KEY = os.getenv("OPENROUTER_API_KEY")
+    if not API_KEY:
+        print("!!! FATAL ERROR: OPENROUTER_API_KEY is missing!")
+        return jsonify({"error": "Server configuration error."}), 500
+
+    # 2. Get User Message safely
+    data = request.get_json(silent=True) # Returns None if not JSON
+    if not data or 'message' not in data:
+        return jsonify({"error": "No message provided"}), 400
+    
+    user_message = data['message']
+    print(f"Received message: '{user_message}'")
+
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_KEY}",
+        "HTTP-Referer": "https://elegets.in",
+        "X-Title": "Elegets Chatbot"
+    }
+
+    # 3. FALLBACK LOOP SYSTEM
+    last_error = ""
+    
+    for model in MODEL_LIST:
+        print(f"Attempting to send request to model: {model}...")
         
         payload = {
-            "model": "google/gemini-2.0-flash-exp:free",
+            "model": model,
             "messages": [
-                {"role": "system", "content": system_prompt_content.strip()},
+                {"role": "system", "content": SYSTEM_PROMPT.strip()},
                 {"role": "user", "content": user_message}
             ]
         }
-        print("Payload constructed. Making request to OpenRouter...")
 
-        # 3. Make the API call and check for errors
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status() # This will raise an error for bad status codes (like 4xx or 5xx)
-        
-        print(f"Request to OpenRouter successful. Status: {response.status_code}")
-        
-        bot_response = response.json()['choices'][0]['message']['content']
-        print("--- CHAT FUNCTION COMPLETED SUCCESSFULLY ---")
-        return jsonify({"reply": bot_response})
+        try:
+            response = requests.post(API_URL, headers=headers, json=payload)
+            
+            # If successful (200 OK)
+            if response.status_code == 200:
+                bot_response = response.json()['choices'][0]['message']['content']
+                print(f"--- SUCCESS with {model} ---")
+                return jsonify({"reply": bot_response})
+            
+            # If Rate Limit (429) or Server Error (5xx), print and Try Next Model
+            elif response.status_code == 429 or response.status_code >= 500:
+                print(f"!!! Model {model} failed with status {response.status_code}. Trying next...")
+                last_error = f"Model {model} busy."
+                continue # Go to top of loop for next model
+            
+            # If Client Error (400, 401), Stop immediately (don't retry)
+            else:
+                print(f"!!! Client Error {response.status_code}: {response.text}")
+                return jsonify({"error": f"API Error: {response.text}"}), response.status_code
 
-    # 4. Catch specific errors and print detailed information
-    except requests.exceptions.HTTPError as http_err:
-        print(f"!!! HTTP ERROR from OpenRouter: {http_err}")
-        print(f"!!! Response Body: {http_err.response.text}") # This shows the exact error from OpenRouter
-        return jsonify({"error": "An error occurred with the AI service."}), 500
-    except Exception as e:
-        print(f"!!! AN UNEXPECTED ERROR OCCURRED: {e}")
-        return jsonify({"error": "An internal server error occurred."}), 500
+        except Exception as e:
+            print(f"!!! Connection Error with {model}: {e}")
+            last_error = str(e)
+            continue
+
+    # 4. If Loop finishes and nothing worked
+    print("!!! All models failed.")
+    return jsonify({"error": "All AI models are currently busy. Please try again in a moment.", "details": last_error}), 503
+
+# --- CRITICAL ADDITION: RUN THE SERVER ---
+if __name__ == '__main__':
+    # Debug=True helps you see errors in the terminal
+    # Host='0.0.0.0' allows access from other devices on the network
+    app.run(debug=True, port=5000)
