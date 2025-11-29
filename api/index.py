@@ -1,12 +1,12 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, Response, jsonify
 from dotenv import load_dotenv
 from flask_cors import CORS
+import json
 
 # Load environment variables
 load_dotenv()
-
 
 # Initialize Flask
 app = Flask(__name__)
@@ -18,63 +18,44 @@ CORS(app, origins=[
 
 @app.route('/', methods=['POST'])
 def chat():
-    print("--- CHAT FUNCTION TRIGGERED ---")
+    print("--- CHAT FUNCTION TRIGGERED (STREAM MODE) ---")
     try:
-        # ======================================================================
-        # 1️⃣ Check API Key
-        # ======================================================================
         API_KEY = os.getenv("OPENROUTER_API_KEY")
         if not API_KEY:
-            print("!!! API KEY MISSING")
-            return jsonify({"error": "Server error: API key missing"}), 500
+            return jsonify({"error": "API key missing"}), 500
 
         API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-        # ======================================================================
-        # 2️⃣ Get User Message & Chat History
-        # ======================================================================
         user_message = request.json.get('message')
         conversation_history = request.json.get('history', [])
 
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
 
-        print(f"User message: {user_message}")
-
-        # ======================================================================
-        # 3️⃣ System Prompt (stay on topic rule added)
-        # ======================================================================
         system_prompt_content = """
-        You operate under two distinct roles with a CLEAR hierarchy, and should ALWAYS maintain the following specific personality.
+        You operate under two roles with a clear hierarchy.
 
-        ─── GLOBAL PERSONALITY & STYLE GUIDE 🌟 ───
-        • Be super friendly & enthusiastic 😄
-        • Use emojis frequently 🚀✨🤖
-        • Use simple English
-        • Explain clearly and simply 💡
-        • Help like a happy friend
+        🎯 GLOBAL PERSONALITY
+        • Friendly, enthusiastic 😄
+        • Use emojis 🚀✨🤖
+        • Simple English
+        • Explain clearly 💡
 
-        ─── IMPORTANT CONVERSATION RULE 📌 ───
-        YOU MUST STRICTLY STAY ON THE CURRENT TOPIC.
-        • If the user asks something unrelated to the ongoing topic, reply:
-          "Let’s complete current topic first. If you want to change topic, please say clearly."
-        • Only switch topics when the user explicitly confirms.
+        📌 IMPORTANT
+        Stay on the current topic. If unrelated:
+        "Let’s complete current topic first. If you want to change topic, please say clearly."
 
-        ─── PRIMARY ROLE 🛠️ ───
-        Expert Technical Assistant (electronics, programming, web dev)
-
-        ─── SECONDARY ROLE 📢 ───
-        Only if a question is DIRECTLY about "Elegets Electronics" or identity.
+        🛠 PRIMARY: Technical Assistant
+        📢 SECONDARY: Elegets info (only if asked directly)
         """
 
-        # ======================================================================
-        # 4️⃣ Create API Request Payload
-        # ======================================================================
+        # Enable streaming!
         payload = {
             "model": "x-ai/grok-4.1-fast:free",
+            "stream": True,
             "messages": [
                 {"role": "system", "content": system_prompt_content.strip()},
-                *conversation_history,  # 👈 Pass previous conversation
+                *conversation_history,
                 {"role": "user", "content": user_message}
             ]
         }
@@ -86,36 +67,31 @@ def chat():
             "X-Title": "Elegets Chatbot"
         }
 
-        print("Sending request to OpenRouter...")
+        def generate():
+            with requests.post(API_URL, headers=headers, json=payload, stream=True) as r:
+                for line in r.iter_lines():
+                    if line:
+                        decoded = line.decode("utf-8").replace("data: ", "")
+                        if decoded.strip() == "[DONE]":
+                            break
+                        try:
+                            content = json.loads(decoded)["choices"][0]["delta"].get("content", "")
+                            if content:
+                                yield content
+                        except:
+                            pass
 
-        # ======================================================================
-        # 5️⃣ Call API
-        # ======================================================================
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status()
+        return Response(generate(), mimetype='text/plain')
 
-        bot_response = response.json()['choices'][0]['message']['content']
-        print("AI Response:", bot_response)
-
-        print("--- CHAT FUNCTION COMPLETED SUCCESSFULLY ---")
-        return jsonify({"reply": bot_response})
-
-    # ======================================================================
-    # Error Handling
-    # ======================================================================
-    except requests.exceptions.HTTPError as http_err:
-        print("!!! HTTP ERROR:", http_err)
-        return jsonify({"error": "AI service error occurred"}), 500
     except Exception as e:
-        print("!!! INTERNAL ERROR:", e)
-        return jsonify({"error": "Internal server error occurred"}), 500
+        print("🚨 ERROR:", e)
+        return jsonify({"error": "Internal server error"}), 500
 
 
-# Root test endpoint
 @app.route('/', methods=['GET'])
 def home():
-    return "Elegets AI Backend Running", 200
+    return "Elegets AI Streaming Backend Running 🚀", 200
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(threaded=True)  # Remove debug=True in production!
