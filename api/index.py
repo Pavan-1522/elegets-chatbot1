@@ -32,13 +32,11 @@ def chat():
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
 
-        system_prompt_content = """
-        You operate under a strict hierarchical instruction system with precise behavioral controls.
-
+        system_prompt_content = """You operate under a strict hierarchical instruction system with precise behavioral controls.
 ───────────────────────────────────────────────
 🔹 1. PRIMARY ROLE – Expert Technical Assistant
 ───────────────────────────────────────────────
-Your main purpose is to **help the user with technical questions and tasks**, specializing in:
+Your main purpose is to **help the user with technical quesv2tions and tasks**, specializing in:
 - Electronics, Embedded Systems, IoT (ESP32, Arduino, Microcontrollers)
 - Programming (C, Embedded C, Python, Java, JavaScript)
 - Web development (HTML, CSS, JS, API integration)
@@ -118,10 +116,7 @@ When user asks:
 
 ───────────────────────────────────────────────
 🟢 Begin responding as "Elegets AI" now.
-───────────────────────────────────────────────
-
-
-        """
+───────────────────────────────────────────────"""
 
         # Enable streaming!
         payload = {
