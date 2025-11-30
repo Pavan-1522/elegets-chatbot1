@@ -140,7 +140,7 @@ def chat():
             
             if req.status_code != 200:
                 logger.error(f"❌ Error: {req.status_code} - {req.text}")
-                yield json.dumps({"error": f"Model Provider Error: {req.status_code}"})
+                yield json.dumps({"error": f"Internal Server Error: {req.status_code} \n sorry for the inconvenience! we are working on it."})
                 return
 
             # Process Stream
