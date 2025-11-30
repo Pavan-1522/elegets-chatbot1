@@ -12,7 +12,7 @@ from flask_cors import CORS
 # Load environment variables
 load_dotenv()
 
-# Initialize Logging (Better debugging than print)
+# Initialize Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - [%(levelname)s] - %(message)s',
@@ -23,7 +23,7 @@ logger = logging.getLogger("ElegetsAI")
 # Initialize Flask
 app = Flask(__name__)
 
-# Enhanced CORS to allow local development and production domains
+# Enhanced CORS setup
 CORS(app, origins=[
     "https://elegets.in",
     "https://ai.elegets.in",
@@ -33,18 +33,12 @@ CORS(app, origins=[
     "http://127.0.0.1:5501"
 ])
 
-# Initialize a Session for connection pooling (Improves Latency)
+# Initialize Session
 session = requests.Session()
 
-# --- MODEL STRATEGY ---
-# Priority list: Fastest/Smartest Free models first.
-# If the first fails, the code automatically tries the next.
-AVAILABLE_MODELS = [
-    "google/gemini-2.0-flash-exp:free",      # Priority 1: Extremely fast & smart
-    "meta-llama/llama-3.3-70b-instruct:free", # Priority 2: Very high intelligence
-    "deepseek/deepseek-r1:free",             # Priority 3: Great for coding/logic
-    "microsoft/phi-3-medium-128k-instruct:free" # Priority 4: Lightweight fallback
-]
+# --- MODEL CONFIGURATION ---
+# Single Model Mode
+SELECTED_MODEL = "google/gemini-2.0-flash-exp:free" 
 
 SYSTEM_PROMPT = """### SYSTEM IDENTITY & CORE INSTRUCTIONS
 You are **Elegets AI**, the official intelligent assistant for **Elegets Electronics**. You were created to be the ultimate companion for engineering students, hobbyists, and makers.
@@ -115,7 +109,7 @@ def chat():
     if not user_message:
         return jsonify({"error": "No message provided"}), 400
 
-    # 2. Prepare Headers & API Config
+    # 2. API Config
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -124,54 +118,33 @@ def chat():
         "X-Title": "Elegets Chatbot"
     }
 
-    # 3. Model Fallback Logic
-    # We define a generator function inside so we can pass it to Flask's Response
+    payload = {
+        "model": SELECTED_MODEL,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT.strip()},
+            *conversation_history,
+            {"role": "user", "content": user_message}
+        ],
+        "temperature": 0.7, 
+        "top_p": 0.9
+    }
+
+    # 3. Stream Generation Function
     def generate_response_stream():
-        model_used = None
-        response_stream = None
-
-        # Try models in order of priority
-        for model in AVAILABLE_MODELS:
-            try:
-                logger.info(f"Attempting model: {model}")
-                
-                payload = {
-                    "model": model,
-                    "stream": True,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                        *conversation_history,
-                        {"role": "user", "content": user_message}
-                    ],
-                    "temperature": 0.7, # Balanced creativity
-                    "top_p": 0.9
-                }
-
-                # Send request with a timeout for connection (5s) to ensure we don't hang on bad models
-                req = session.post(API_URL, headers=headers, json=payload, stream=True, timeout=(5, 60))
-                
-                if req.status_code == 200:
-                    model_used = model
-                    response_stream = req
-                    logger.info(f"✅ Connected to {model}")
-                    break # Success! Exit loop
-                else:
-                    logger.warning(f"⚠️ Model {model} failed with Status: {req.status_code}. Response: {req.text}")
-                    continue # Try next model
-
-            except requests.exceptions.RequestException as e:
-                logger.error(f"❌ Network error with {model}: {str(e)}")
-                continue
-
-        if not response_stream:
-            logger.error("🚫 All models failed.")
-            yield json.dumps({"error": "Service currently unavailable. Please try again."})
-            return
-
-        # 4. Stream Processing
-        # Yield the model name first (optional, for debugging on frontend) or just stream content
         try:
-            for line in response_stream.iter_lines():
+            logger.info(f"🚀 Sending request to {SELECTED_MODEL}...")
+            
+            # Send request
+            req = session.post(API_URL, headers=headers, json=payload, stream=True, timeout=(5, 60))
+            
+            if req.status_code != 200:
+                logger.error(f"❌ Error: {req.status_code} - {req.text}")
+                yield json.dumps({"error": f"Model Provider Error: {req.status_code}"})
+                return
+
+            # Process Stream
+            for line in req.iter_lines():
                 if line:
                     decoded_line = line.decode("utf-8")
                     if decoded_line.startswith("data: "):
@@ -187,12 +160,16 @@ def chat():
                                 yield content
                         except json.JSONDecodeError:
                             continue
-        except Exception as stream_e:
-            logger.error(f"Stream interrupted: {stream_e}")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Network error: {str(e)}")
+            yield json.dumps({"error": "Network connection failed."})
+        except Exception as e:
+            logger.error(f"❌ Unexpected error: {str(e)}")
+            yield json.dumps({"error": "An internal error occurred."})
         finally:
-             response_stream.close()
-             total_time = time.time() - start_time
-             logger.info(f"🏁 Response complete. Model: {model_used}. Time: {total_time:.2f}s")
+            total_time = time.time() - start_time
+            logger.info(f"🏁 Response complete. Time: {total_time:.2f}s")
 
     # Return the streaming response
     return Response(stream_with_context(generate_response_stream()), mimetype='text/plain')
@@ -202,9 +179,8 @@ def home():
     return jsonify({
         "status": "online", 
         "service": "Elegets AI Backend", 
-        "models_available": AVAILABLE_MODELS
+        "model": SELECTED_MODEL
     }), 200
 
 if __name__ == '__main__':
-    # Threaded=True is crucial for handling concurrent streaming requests
     app.run(host='0.0.0.0', port=5000, threaded=True)
