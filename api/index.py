@@ -29,7 +29,8 @@ CORS(app, origins=[
     "https://ai.elegets.in",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "http://127.0.0.1:5501"
 ])
 
 # Initialize a Session for connection pooling (Improves Latency)
