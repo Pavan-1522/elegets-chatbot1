@@ -1,10 +1,5 @@
-Flask
-requests
+flask
+flask-cors
 python-dotenv
-<<<<<<< HEAD
+requests
 gunicorn
-Flask-Cors
-=======
-Flask-Cors
-gunicorn
->>>>>>> 700e1674988dc03779f7ade18bf635a7e08035d0
