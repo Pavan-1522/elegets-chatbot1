@@ -11,7 +11,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, origins=[
     "https://elegets.in",
-    "http://127.0.0.1:5500",
+    "http://127.0.0.1:5501",
     "http://localhost:5500",
     "https://ai.elegets.in"
 ])
