@@ -126,7 +126,7 @@ def chat():
         messages.append({"role": "user", "content": user_message})
 
     payload = {
-        "model": "xiaomi/mimo-v2-flash:free", # Or "google/gemini-2.0-flash-exp:free"
+        "model": "mistralai/devstral-2512:free", # Or "google/gemini-2.0-flash-exp:free"
         "messages": messages,
         "stream": True  # <--- CRITICAL: ENABLE STREAMING
     }
