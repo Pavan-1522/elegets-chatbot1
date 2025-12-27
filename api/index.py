@@ -1,51 +1,31 @@
 import os
+import json
 import requests
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Initialize the Flask application
+# Initialize Flask
 app = Flask(__name__)
-CORS(app, origins=[
+
+# --- CORS CONFIGURATION ---
+# We allow credentials (if needed) and specific origins.
+# Note: Ensure your frontend URL is exactly right (http vs https, trailing slash).
+CORS(app, resources={r"/*": {"origins": [
     "https://elegets.in",
     "http://127.0.0.1:5501",
     "http://localhost:5500",
-    "https://ai.elegets.in"
-])
+    "http://localhost:5000",
+    "https://ai.elegets.in",
+    "https://elegets-chatbot1.vercel.app" 
+]}})
 
-@app.route('/', methods=['POST'])
-def chat():
-    # START OF DEBUGGING
-    print("--- CHAT FUNCTION TRIGGERED ---")
-    try:
-        # 1. Check if the API Key was loaded successfully
-        API_KEY = os.getenv("OPENROUTER_API_KEY")
-        if not API_KEY:
-            print("!!! FATAL ERROR: OPENROUTER_API_KEY environment variable was not found or is empty!")
-            return jsonify({"error": "Server configuration error: API key is missing."}), 500
-        print("API Key loaded successfully.")
-
-        API_URL = "https://openrouter.ai/api/v1/chat/completions"
-        
-        # 2. Check if the user message was received
-        user_message = request.json.get('message')
-        if not user_message:
-            print("Error: No 'message' found in the incoming request.")
-            return jsonify({"error": "No message provided"}), 400
-        print(f"Received message: '{user_message}'")
-
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
-            "HTTP-Referer": "https://elegets.in",
-            "X-Title": "Elegets Chatbot"
-        }
-
-        system_prompt_content = """
-        You operate under two distinct roles with a clear hierarchy, but you must ALWAYS maintain a specific personality.
+# --- SYSTEM PROMPT ---
+SYSTEM_PROMPT = """
+You operate under two distinct roles with a clear hierarchy, but you must ALWAYS maintain a specific personality.
 
 ## GLOBAL PERSONALITY & STYLE GUIDE 🌟
 No matter which role you are playing, you must follow these style rules:
@@ -107,32 +87,82 @@ Our mission is to help the next generation of engineers build cool new projects!
 
 --- FINAL INSTRUCTION ---
 Always prioritize your **Primary Role**. Do not promote Elegets Electronics or mention its services unless the user asks you about the company first or asks who you are. Keep it friendly and simple! 😊
-        """
-        
-        payload = {
-            "model": "xiaomi/mimo-v2-flash:free",
-            "messages": [
-                {"role": "system", "content": system_prompt_content.strip()},
-                {"role": "user", "content": user_message}
-            ]
-        }
-        print("Payload constructed. Making request to OpenRouter...")
+"""
 
-        # 3. Make the API call and check for errors
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status() # This will raise an error for bad status codes (like 4xx or 5xx)
-        
-        print(f"Request to OpenRouter successful. Status: {response.status_code}")
-        
-        bot_response = response.json()['choices'][0]['message']['content']
-        print("--- CHAT FUNCTION COMPLETED SUCCESSFULLY ---")
-        return jsonify({"reply": bot_response})
+@app.route('/', methods=['POST'])
+def chat():
+    # 1. Validation
+    API_KEY = os.getenv("OPENROUTER_API_KEY")
+    if not API_KEY:
+        return jsonify({"error": "Server API key missing."}), 500
 
-    # 4. Catch specific errors and print detailed information
-    except requests.exceptions.HTTPError as http_err:
-        print(f"!!! HTTP ERROR from OpenRouter: {http_err}")
-        print(f"!!! Response Body: {http_err.response.text}") # This shows the exact error from OpenRouter
-        return jsonify({"error": "An error occurred with the AI service."}), 500
-    except Exception as e:
-        print(f"!!! AN UNEXPECTED ERROR OCCURRED: {e}")
-        return jsonify({"error": "An internal server error occurred."}), 500
+    data = request.json
+    user_message = data.get('message')
+    history = data.get('history', [])
+
+    if not user_message:
+        return jsonify({"error": "No message provided"}), 400
+
+    # 2. Build OpenRouter Payload
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_KEY}",
+        "HTTP-Referer": "https://elegets.in",
+        "X-Title": "Elegets Chatbot"
+    }
+
+    # Construct messages list (System + History + New Message)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT.strip()}]
+    
+    # Optional: Add last few messages from history for context (limit to last 4 to save tokens)
+    # Be careful not to include the system prompt twice if it's in history
+    for msg in history[-4:]: 
+        if msg.get('role') != 'system':
+            messages.append({"role": msg.get('role'), "content": msg.get('content')})
+
+    # Add current user message if not already added
+    if not messages or messages[-1]['content'] != user_message:
+        messages.append({"role": "user", "content": user_message})
+
+    payload = {
+        "model": "xiaomi/mimo-v2-flash:free", # Or "google/gemini-2.0-flash-exp:free"
+        "messages": messages,
+        "stream": True  # <--- CRITICAL: ENABLE STREAMING
+    }
+
+    # 3. Define the Generator Function
+    def generate():
+        try:
+            with requests.post(API_URL, headers=headers, json=payload, stream=True) as r:
+                r.raise_for_status()
+                
+                # Iterate over the response stream line by line
+                for line in r.iter_lines():
+                    if line:
+                        decoded_line = line.decode('utf-8')
+                        
+                        # OpenRouter sends lines starting with "data: "
+                        if decoded_line.startswith('data: '):
+                            json_str = decoded_line.replace('data: ', '')
+                            
+                            # Check for stream end signal
+                            if json_str.strip() == '[DONE]':
+                                break
+                                
+                            try:
+                                chunk = json.loads(json_str)
+                                # Extract content delta
+                                content = chunk['choices'][0]['delta'].get('content', '')
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            yield f"\n[Error: {str(e)}]"
+
+    # 4. Return the Stream Response
+    return Response(stream_with_context(generate()), mimetype='text/plain')
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
